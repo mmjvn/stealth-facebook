@@ -18,12 +18,14 @@ module Stealth
           "https://graph.facebook.com/v3.2/me"
         end
 
-        attr_reader :api_endpoint, :reply
+        attr_reader :api_endpoint, :reply, :access_token
 
-        def initialize(reply:, endpoint: 'messages')
+        def initialize(reply:, endpoint: 'messages',
+                       access_token: Stealth.config.facebook.page_access_token)
           @reply = reply
-          access_token = "access_token=#{Stealth.config.facebook.page_access_token}"
-          @api_endpoint = [[FB_ENDPOINT, endpoint].join('/'), access_token].join('?')
+          @access_token = access_token
+          access_token_param = "access_token=#{@access_token}"
+          @api_endpoint = [[FB_ENDPOINT, endpoint].join('/'), access_token_param].join('?')
         end
 
         def transmit
@@ -57,14 +59,14 @@ module Stealth
           HTTP.timeout(connect: 15, read: 60).headers(headers)
         end
 
-        def self.fetch_profile(recipient_id:, fields: nil)
+        def self.fetch_profile(recipient_id:, fields: nil, access_token:)
           if fields.blank?
             fields = [:id, :name, :first_name, :last_name, :profile_pic]
           end
 
           query_hash = {
             fields: fields.join(','),
-            access_token: Stealth.config.facebook.page_access_token
+            access_token: access_token || Stealth.config.facebook.page_access_token
           }
 
           uri = URI::HTTPS.build(
@@ -89,7 +91,8 @@ module Stealth
           end
         end
 
-        def self.track(recipient_id:, metric:, value:, options: {})
+        def self.track(recipient_id:, metric:, value:, options: {},
+                       page_id: Stealth.config.facebook.page_id)
           metric_values = [{
             '_eventName' => metric,
             '_valueToSum' => value
@@ -104,7 +107,7 @@ module Stealth
             application_tracking_enabled: 1,
             extinfo: MultiJson.dump(['mb1']),
             page_scoped_user_id: recipient_id,
-            page_id: Stealth.config.facebook.page_id
+            page_id: page_id
           }
 
           uri = URI::HTTPS.build(

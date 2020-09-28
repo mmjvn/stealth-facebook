@@ -11,10 +11,10 @@ module Stealth
 
         class << self
           def trigger
-            reply_handler = Stealth::Services::Facebook::ReplyHandler.new
-            reply = reply_handler.messenger_profile
-            client = Stealth::Services::Facebook::Client.new(reply: reply, endpoint: 'messenger_profile')
-            client.transmit
+            # reply_handler = Stealth::Services::Facebook::ReplyHandler.new
+            # reply = reply_handler.messenger_profile
+            # client = Stealth::Services::Facebook::Client.new(reply: reply, endpoint: 'messenger_profile')
+            # client.transmit
           end
         end
 
