@@ -7,10 +7,11 @@ module Stealth
 
       class ReplyHandler < Stealth::Services::BaseReplyHandler
 
-        attr_reader :recipient_id, :reply
+        attr_reader :recipient_id, :reply, :user_ref_id
 
-        def initialize(recipient_id: nil, reply: nil)
+        def initialize(recipient_id: nil, user_ref_id: nil, reply: nil)
           @recipient_id = recipient_id
+          @user_ref_id = user_ref_id
           @reply = reply
         end
 
@@ -192,310 +193,306 @@ module Stealth
 
         private
 
-          def unstructured_template
-            {
-              "recipient" => {
-                "id" => recipient_id
-              },
-              "message" => { }
-            }
+        def recipient_structure
+          h_recipient = { 'recipient' => {} }
+          if @user_ref_id.present?
+            h_recipient['recipient']['user_ref'] = @user_ref_id
+          else
+            h_recipient['recipient']['id'] = @recipient_id
           end
+          h_recipient
+        end
 
-          def card_template(sharable: nil, aspect_ratio: nil)
-            template = {
-              "recipient" => {
-                "id" => recipient_id
-              },
-              "message" => {
-                "attachment" => {
-                  "type" => "template",
-                  "payload" => {
-                    "template_type" => "generic",
-                    "elements" => []
-                  }
+        def unstructured_template
+          recipient_structure.merge('message' => {})
+        end
+
+        def card_template(sharable: nil, aspect_ratio: nil)
+          template = {
+            "message" => {
+              "attachment" => {
+                "type" => "template",
+                "payload" => {
+                  "template_type" => "generic",
+                  "elements" => []
                 }
               }
             }
+          }
+          template = recipient_structure.merge(template)
 
-            if sharable.present?
-              template["message"]["payload"]["sharable"] = sharable
-            end
-
-            if aspect_ratio.present?
-              template["message"]["payload"]["image_aspect_ratio"] = aspect_ratio
-            end
-
-            template
+          if sharable.present?
+            template["message"]["payload"]["sharable"] = sharable
           end
 
-          def list_template(top_element_style: nil, buttons: [])
-            template = {
-              "recipient" => {
-                "id" => recipient_id
-              },
-              "message" => {
-                "attachment" => {
-                  "type" => "template",
-                  "payload" => {
-                    "template_type" => "list",
-                    "elements" => []
-                  }
+          if aspect_ratio.present?
+            template["message"]["payload"]["image_aspect_ratio"] = aspect_ratio
+          end
+
+          template
+        end
+
+        def list_template(top_element_style: nil, buttons: [])
+          template = {
+            "message" => {
+              "attachment" => {
+                "type" => "template",
+                "payload" => {
+                  "template_type" => "list",
+                  "elements" => []
                 }
               }
             }
+          }
+          template = recipient_structure.merge(template)
 
-            if top_element_style.present?
-              unless ['large', 'compact'].include?(top_element_style)
-                raise(ArgumentError, "Facebook list replies only support 'large' or 'compact' as the top_element_style.")
-              end
-
-              template["message"]['attachment']["payload"]["top_element_style"] = top_element_style
+          if top_element_style.present?
+            unless ['large', 'compact'].include?(top_element_style)
+              raise(ArgumentError, "Facebook list replies only support 'large' or 'compact' as the top_element_style.")
             end
 
-            if buttons.present?
-              unless buttons.size > 1
-                raise(ArgumentError, "Facebook lists only support a single button in the top element.")
-              end
-
-              template["message"]["payload"]["buttons"] = aspect_ratio
-            end
-
-            template
+            template["message"]['attachment']["payload"]["top_element_style"] = top_element_style
           end
 
-          def element_template(element_type:, element:)
-            unless element["title"].present?
-              raise(ArgumentError, "Facebook card and list elements must have a 'title' attribute.")
+          if buttons.present?
+            unless buttons.size > 1
+              raise(ArgumentError, "Facebook lists only support a single button in the top element.")
             end
 
-            template = {
-              "title" => element["title"]
+            template["message"]["payload"]["buttons"] = aspect_ratio
+          end
+
+          template
+        end
+
+        def element_template(element_type:, element:)
+          unless element["title"].present?
+            raise(ArgumentError, "Facebook card and list elements must have a 'title' attribute.")
+          end
+
+          template = {
+            "title" => element["title"]
+          }
+
+          if element["subtitle"].present?
+            template["subtitle"] = element["subtitle"]
+          end
+
+          if element["image_url"].present?
+            template["image_url"] = element["image_url"]
+          end
+
+          if element["default_action"].present?
+            default_action = generate_default_action(action_params: element["default_action"].first)
+            template["default_action"] = default_action
+          end
+
+          if element["buttons"].present?
+            if element_type == 'card' && element["buttons"].size > 3
+              raise(ArgumentError, "Facebook card elements only support 3 buttons.")
+            end
+
+            if element_type == 'list' && element["buttons"].size > 1
+              raise(ArgumentError, "Facebook list elements only support 1 button.")
+            end
+
+            fb_buttons = generate_buttons(buttons: element["buttons"])
+            template["buttons"] = fb_buttons
+          end
+
+          template
+        end
+
+        def attachment_template(attachment_type:, attachment_url:)
+          {
+            "type" => attachment_type,
+            "payload" => {
+              "url" => attachment_url
             }
+          }
+        end
 
-            if element["subtitle"].present?
-              template["subtitle"] = element["subtitle"]
-            end
+        def button_attachment_template(text:, buttons:)
+          {
+            "type" => "template",
+            "payload" => {
+              "template_type" => "button",
+              "text"          => text,
+              "buttons"       => buttons
+            }
+          }
+        end
 
-            if element["image_url"].present?
-              template["image_url"] = element["image_url"]
-            end
+        def sender_action_template(action:)
+          recipient_structure.merge("sender_action" => action)
+        end
 
-            if element["default_action"].present?
-              default_action = generate_default_action(action_params: element["default_action"].first)
-              template["default_action"] = default_action
-            end
-
-            if element["buttons"].present?
-              if element_type == 'card' && element["buttons"].size > 3
-                raise(ArgumentError, "Facebook card elements only support 3 buttons.")
-              end
-
-              if element_type == 'list' && element["buttons"].size > 1
-                raise(ArgumentError, "Facebook list elements only support 1 button.")
-              end
-
-              fb_buttons = generate_buttons(buttons: element["buttons"])
-              template["buttons"] = fb_buttons
-            end
-
-            template
+        def generate_card_elements(elements:)
+          if elements.size > 10
+            raise(ArgumentError, "Facebook cards can have at most 10 cards.")
           end
 
-          def attachment_template(attachment_type:, attachment_url:)
-            {
-              "type" => attachment_type,
-              "payload" => {
-                "url" => attachment_url
+          fb_elements = elements.collect do |element|
+            element_template(element_type: 'card', element: element)
+          end
+
+          fb_elements
+        end
+
+        def generate_list_elements(elements:)
+          if elements.size < 2 || elements.size > 4
+            raise(ArgumentError, "Facebook lists must have 2-4 elements.")
+          end
+
+          fb_elements = elements.collect do |element|
+            element_template(element_type: 'list', element: element)
+          end
+
+          fb_elements
+        end
+
+        def generate_suggestions(suggestions:)
+          quick_replies = suggestions.collect do |suggestion|
+            case suggestion["type"]
+            when 'location'
+              quick_reply = { "content_type" => "location" }
+            when 'phone'
+              quick_reply = { "content_type" => "user_phone_number" }
+            when 'email'
+              quick_reply = { "content_type" => "user_email" }
+            when 'birthday'
+              quick_reply = { "content_type" => "user_birthday" }
+            when 'state'
+              quick_reply = { "content_type" => "user_state" }
+            when 'zip_code'
+              quick_reply = { "content_type" => "user_zip_code" }
+            else
+              quick_reply = {
+                "content_type" => "text",
+                "title" => suggestion["text"]
               }
-            }
-          end
 
-          def button_attachment_template(text:, buttons:)
-            {
-              "type" => "template",
-              "payload" => {
-                "template_type" => "button",
-                "text"          => text,
-                "buttons"       => buttons
-              }
-            }
-          end
-
-          def sender_action_template(action:)
-            {
-              "recipient" => {
-                "id" => recipient_id
-              },
-              "sender_action" => action
-            }
-          end
-
-          def generate_card_elements(elements:)
-            if elements.size > 10
-              raise(ArgumentError, "Facebook cards can have at most 10 cards.")
-            end
-
-            fb_elements = elements.collect do |element|
-              element_template(element_type: 'card', element: element)
-            end
-
-            fb_elements
-          end
-
-          def generate_list_elements(elements:)
-            if elements.size < 2 || elements.size > 4
-              raise(ArgumentError, "Facebook lists must have 2-4 elements.")
-            end
-
-            fb_elements = elements.collect do |element|
-              element_template(element_type: 'list', element: element)
-            end
-
-            fb_elements
-          end
-
-          def generate_suggestions(suggestions:)
-            quick_replies = suggestions.collect do |suggestion|
-              case suggestion["type"]
-              when 'location'
-                quick_reply = { "content_type" => "location" }
-              when 'phone'
-                quick_reply = { "content_type" => "user_phone_number" }
-              when 'email'
-                quick_reply = { "content_type" => "user_email" }
-              when 'birthday'
-                quick_reply = { "content_type" => "user_birthday" }
-              when 'state'
-                quick_reply = { "content_type" => "user_state" }
-              when 'zip_code'
-                quick_reply = { "content_type" => "user_zip_code" }
+              if suggestion["payload"].present?
+                quick_reply["payload"] = suggestion["payload"]
               else
-                quick_reply = {
-                  "content_type" => "text",
-                  "title" => suggestion["text"]
-                }
-
-                if suggestion["payload"].present?
-                  quick_reply["payload"] = suggestion["payload"]
-                else
-                  quick_reply["payload"] = suggestion["text"]
-                end
-
-                if suggestion["image_url"].present?
-                  quick_reply["image_url"] = suggestion["image_url"]
-                end
+                quick_reply["payload"] = suggestion["text"]
               end
 
-              quick_reply
+              if suggestion["image_url"].present?
+                quick_reply["image_url"] = suggestion["image_url"]
+              end
             end
 
-            quick_replies
+            quick_reply
           end
 
-          # Requires adding support for Buy, Log In, Log Out, and Share button types
-          def generate_buttons(buttons:)
-            fb_buttons = buttons.collect do |button|
-              case button['type']
-              when 'url'
-                _button = {
-                  "type" => "web_url",
-                  "url" => button["url"],
-                  "title" => button["text"]
-                }
+          quick_replies
+        end
 
-                if button["webview_height"].present?
-                  _button["webview_height_ratio"] = button["webview_height"]
-                end
+        # Requires adding support for Buy, Log In, Log Out, and Share button types
+        def generate_buttons(buttons:)
+          fb_buttons = buttons.collect do |button|
+            case button['type']
+            when 'url'
+              _button = {
+                "type" => "web_url",
+                "url" => button["url"],
+                "title" => button["text"]
+              }
 
-                if button['messenger_extensions'].present?
-                  _button['messenger_extensions'] = true
-                end
+              if button["webview_height"].present?
+                _button["webview_height_ratio"] = button["webview_height"]
+              end
 
-                _button
-
-              when 'payload'
-                _button = {
-                  "type" => "postback",
-                  "payload" => button["payload"],
-                  "title" => button["text"]
-                }
-
-              when 'call'
-                _button = {
-                  "type" => "phone_number",
-                  "payload" => button["phone_number"],
-                  "title" => button["text"]
-                }
-
-              when 'login'
-                _button = {
-                  "type" => "account_link",
-                  "url" => button["url"]
-                }
-
-              when 'logout'
-                _button = {
-                  "type" => "account_unlink"
-                }
-
-              when 'nested'
-                _button = {
-                  "type" => "nested",
-                  "title" => button["text"],
-                  "call_to_actions" => generate_buttons(buttons: button["buttons"])
-                }
-
-              else
-                raise(Stealth::Errors::ServiceImpaired, "Sorry, we don't yet support #{button["type"]} buttons yet!")
+              if button['messenger_extensions'].present?
+                _button['messenger_extensions'] = true
               end
 
               _button
+
+            when 'payload'
+              _button = {
+                "type" => "postback",
+                "payload" => button["payload"],
+                "title" => button["text"]
+              }
+
+            when 'call'
+              _button = {
+                "type" => "phone_number",
+                "payload" => button["phone_number"],
+                "title" => button["text"]
+              }
+
+            when 'login'
+              _button = {
+                "type" => "account_link",
+                "url" => button["url"]
+              }
+
+            when 'logout'
+              _button = {
+                "type" => "account_unlink"
+              }
+
+            when 'nested'
+              _button = {
+                "type" => "nested",
+                "title" => button["text"],
+                "call_to_actions" => generate_buttons(buttons: button["buttons"])
+              }
+
+            else
+              raise(Stealth::Errors::ServiceImpaired, "Sorry, we don't yet support #{button["type"]} buttons yet!")
             end
 
-            fb_buttons
+            _button
           end
 
-          def generate_default_action(action_params:)
-            default_action = {
-              "type" => "web_url",
-              "url" => action_params["url"]
+          fb_buttons
+        end
+
+        def generate_default_action(action_params:)
+          default_action = {
+            "type" => "web_url",
+            "url" => action_params["url"]
+          }
+
+          if action_params["webview_height"].present?
+            action_params["webview_height_ratio"] = action_params["webview_height"]
+          end
+
+          default_action
+        end
+
+        def check_if_arguments_are_valid!(suggestions:, buttons:)
+          if suggestions.present? && buttons.present?
+            raise(ArgumentError, "A reply cannot have buttons and suggestions!")
+          end
+        end
+
+        def greeting
+          Stealth.config.facebook.setup.greeting.map do |greeting|
+            {
+              "locale" => greeting["locale"],
+              "text" => greeting["text"]
             }
-
-            if action_params["webview_height"].present?
-              action_params["webview_height_ratio"] = action_params["webview_height"]
-            end
-
-            default_action
           end
+        end
 
-          def check_if_arguments_are_valid!(suggestions:, buttons:)
-            if suggestions.present? && buttons.present?
-              raise(ArgumentError, "A reply cannot have buttons and suggestions!")
-            end
+        def persistent_menu
+          Stealth.config.facebook.setup.persistent_menu.map do |persistent_menu|
+            {
+              "locale" => persistent_menu['locale'],
+              "composer_input_disabled" => (persistent_menu['composer_input_disabled'] || false),
+              "call_to_actions" => generate_buttons(buttons: persistent_menu['call_to_actions'])
+            }
           end
+        end
 
-          def greeting
-            Stealth.config.facebook.setup.greeting.map do |greeting|
-              {
-                "locale" => greeting["locale"],
-                "text" => greeting["text"]
-              }
-            end
-          end
-
-          def persistent_menu
-            Stealth.config.facebook.setup.persistent_menu.map do |persistent_menu|
-              {
-                "locale" => persistent_menu['locale'],
-                "composer_input_disabled" => (persistent_menu['composer_input_disabled'] || false),
-                "call_to_actions" => generate_buttons(buttons: persistent_menu['call_to_actions'])
-              }
-            end
-          end
-
-          def get_started
-            Stealth.config.facebook.setup.get_started
-          end
+        def get_started
+          Stealth.config.facebook.setup.get_started
+        end
       end
 
     end

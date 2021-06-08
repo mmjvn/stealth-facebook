@@ -45,6 +45,9 @@ module Stealth
             id: page_id,
             access_token: page_access_token
           }
+          service_message.user_ref = {
+            id: user_ref_id
+          }
           service_message.sender_id = get_sender_id
           service_message.target_id = get_target_id
           service_message.timestamp = get_timestamp
@@ -69,6 +72,10 @@ module Stealth
 
         def get_sender_id
           facebook_message['sender']['id']
+        end
+
+        def user_ref_id
+          facebook_message['sender']['user_ref']
         end
 
         def get_target_id
