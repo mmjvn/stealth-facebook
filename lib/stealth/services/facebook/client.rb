@@ -29,8 +29,6 @@ module Stealth
         end
 
         def transmit
-          puts "API Endpoint: #{api_endpoint}"
-          puts "Body: #{MultiJson.dump(reply)}"
           res = self
                   .class
                   .http_client
