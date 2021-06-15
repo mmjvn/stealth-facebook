@@ -46,7 +46,8 @@ module Stealth
             access_token: page_access_token
           }
           service_message.user_ref = {
-            id: user_ref_id
+            id: user_ref_id,
+            prior_id: prior_ref_id
           }
           service_message.sender_id = get_sender_id
           service_message.target_id = get_target_id
@@ -76,6 +77,10 @@ module Stealth
 
         def user_ref_id
           facebook_message['sender']['user_ref']
+        end
+
+        def prior_ref_id
+          facebook_message.dig('prior_message', 'identifier')
         end
 
         def get_target_id
