@@ -204,7 +204,6 @@ module Stealth
         end
 
         def unstructured_template
-          puts recipient_structure
           recipient_structure.merge('message' => {})
         end
 
