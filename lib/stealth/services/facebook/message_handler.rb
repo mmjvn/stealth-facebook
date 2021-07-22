@@ -39,7 +39,7 @@ module Stealth
         def process
           @service_message = ServiceMessage.new(service: 'facebook')
           @facebook_message = params['entry'].first['messaging'].first
-          p @facebook_message
+          p params['entry'].first['messaging']
           page_id = facebook_page_id
           page_access_token = facebook_page_access_token(page_id)
           service_message.page_info = {
